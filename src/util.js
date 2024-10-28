@@ -5,7 +5,7 @@ const nodemailer = require("nodemailer");
 const os = require('os');
 const path = require('path');
 
-let browserArgs = ['--enable-features=SharedArrayBuffer', '--start-maximized', '--auto-accept-camera-and-microphone-capture'];
+let browserArgs = ['--enable-features=SharedArrayBuffer', '--start-maximized', '--auto-accept-camera-and-microphone-capture', '--ignore-certificate-errors'];
 // webgpu
 browserArgs.push(
   ...['--enable-webgpu-developer-features']);
