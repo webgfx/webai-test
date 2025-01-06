@@ -305,7 +305,6 @@ async function main() {
     userDataDir = `${util.outDir}/user-data-dir`;
   }
 
-
   util.browserName = browserName;
   // TODO: handle space in edge_stable's path
   util.browserPath = browserPath;

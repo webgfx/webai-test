@@ -22,28 +22,29 @@ async function getConfig() {
 
   // GPU
   if (util["platform"] === "win32") {
-    const info = execSync("wmic path win32_VideoController get Name,DriverVersion,Status,PNPDeviceID /value")
+    const info = execSync("powershell -c \"Get-CIMInstance -query 'select * from win32_VideoController'\"")
       .toString()
       .split("\n");
     for (let i = 1; i < info.length; i++) {
       let match;
-      match = info[i].match("DriverVersion=(.*)");
+      match = info[i].match("^DriverVersion.*: (.*)");
       if (match) {
         util["gpuDriverVersion"] = match[1];
       }
-      match = info[i].match("Name=(.*)");
+
+      match = info[i].match("^Name .*: (.*)");
       if (match) {
         util["gpuName"] = match[1];
       }
-      match = info[i].match("PNPDeviceID=.*DEV_(.{4})");
+      match = info[i].match("^PNPDeviceID.*DEV_(.{4})");
       if (match) {
         util["gpuDeviceId"] = match[1].toUpperCase();
       }
-      match = info[i].match("PNPDeviceID=.*VEN_(.{4})");
+      match = info[i].match("^PNPDeviceID.*VEN_(.{4})");
       if (match) {
         util["gpuVendorId"] = match[1].toUpperCase();
       }
-      match = info[i].match("Status=(.*)");
+      match = info[i].match("^Status=(.*)");
       if (match) {
         if (util["gpuName"].match("Microsoft")) {
           continue;

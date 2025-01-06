@@ -59,14 +59,6 @@ async function startBrowser(traceFile = undefined) {
   page.on('pageerror', (error) => {
     const pageError = `[pageerror] ${error}`;
 
-    // Temporarily skip some WebNN errors
-    if (pageError.startsWith(
-      '[pageerror] Error: TypeError: Failed to execute \'fetch\' on \'WorkerGlobalScope\'') ||
-      pageError.startsWith('[pageerror] Error: ErrorEvent') ||
-      pageError.startsWith('[pageerror] Error: null')) {
-      return;
-    }
-
     util.hasError = true;
     util.errorMsg = pageError;
     util.log(pageError);
@@ -104,17 +96,6 @@ function getErrorResult(task) {
   }
 }
 
-function removeSlowEps(eps) {
-  if (util.gpuVendorId === '8086') {
-    let configLen = eps.length;
-    for (let i = configLen - 1; i >= 0; i--) {
-      if (eps[i].startsWith('webnn')) {
-        eps.splice(i, 1);
-      }
-    }
-  }
-}
-
 async function runBenchmark(task) {
   // get benchmarks
   let benchmarks = [];
@@ -139,7 +120,6 @@ async function runBenchmark(task) {
       } else {
         config['ep'] = structuredClone(util.allEps.filter(
           (item) => ['wasm'].indexOf(item) < 0));
-        // removeSlowEps(config['ep']);
       }
       for (let ep of config['ep']) {
         if (util.conformanceEps.indexOf(ep) < 0) {
@@ -151,7 +131,6 @@ async function runBenchmark(task) {
         config['ep'] = util.args['performance-ep'].split(',');
       } else {
         config['ep'] = structuredClone(util.allEps);
-        // removeSlowEps(config['ep']);
       }
       for (let ep of config['ep']) {
         if (util.performanceEps.indexOf(ep) < 0) {
@@ -173,7 +152,7 @@ async function runBenchmark(task) {
   let benchmarksLength = benchmarks.length;
   let previousModelName = '';
 
-  // format: testName, (first, average, best) * (webgpu, wasm, webnn-gpu)
+  // format: testName, (first, average, best) * (webgpu, wasm)
   let results = [];
   let defaultValue = 'NA';
   let epsLength = util.allEps.length;
@@ -229,16 +208,7 @@ async function runBenchmark(task) {
 
     for (let index = 0; index < util.parameters.length; index++) {
       if (benchmarks[i][index]) {
-        if (util.parameters[index] === 'ep' &&
-          benchmarks[i][index].startsWith('webnn')) {
-          let deviceType = benchmarks[i][index].replace('webnn-', '');
-          url += `&${util.parameters[index]}=webnn&deviceType=${deviceType}`;
-          if (deviceType === 'cpu') {
-            url += `&webnnNumThreads=${util['cpuThreads']}`;
-          }
-        } else {
-          url += `&${util.parameters[index]}=${benchmarks[i][index]}`;
-        }
+        url += `&${util.parameters[index]}=${benchmarks[i][index]}`;
       }
     }
     if (util.toolkitUrlArgs.length > 0) {

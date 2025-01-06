@@ -9,16 +9,12 @@ let browserArgs = ['--enable-features=SharedArrayBuffer', '--start-maximized', '
 // webgpu
 browserArgs.push(
   ...['--enable-webgpu-developer-features']);
-// webnn
-browserArgs.push(
-  ...['--enable-features=WebMachineLearningNeuralNetwork',
-    '--disable-gpu-sandbox', '--use-redist-dml']);
 
 let parameters = ['modelName', 'ep'];
 
 let platform = os.platform();
 
-let allEps = ['webgpu', 'wasm', 'webnn-gpu'];
+let allEps = ['webgpu', 'wasm'];
 
 // please make sure these metrics are shown up in order
 let taskMetrics = {
@@ -28,8 +24,6 @@ let taskMetrics = {
 
 const outDir = path.join(path.resolve(__dirname), '../out');
 ensureDir(outDir);
-
-const server = 'wp@wp-27.sh.intel.com';
 
 const sshKey = path.join(os.homedir(), '.ssh/id_rsa_common');
 const remoteCmdArgs = fs.existsSync(sshKey) ? `-i ${sshKey}` : '';
@@ -156,7 +150,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function ssh(cmd) {
+function ssh(cmd, server) {
   return `ssh ${remoteCmdArgs} ${server} ${cmd}`;
 }
 
@@ -180,7 +174,6 @@ module.exports = {
   breakdown: false,
   browserArgs: browserArgs,
   hostname: os.hostname(),
-  server: server,
   outDir: outDir,
   parameters: parameters,
   performanceEps: [],

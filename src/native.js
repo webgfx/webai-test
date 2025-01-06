@@ -1,6 +1,6 @@
 'use strict';
 
-const spawn = require('child_process').spawn;
+const { exec } = require('child_process');
 const path = require('path');
 const util = require('./util.js');
 
@@ -10,7 +10,7 @@ const freeDimensionOverrides = {
 
 function syncNative() {
   process.chdir(util.args['ortDir']);
-  const cmd = spawn('git', ['pull', 'origin', 'main']);
+  const cmd = exec('git pull origin main');
   cmd.stdout.on('data', util.stdoutOnData);
   cmd.stderr.on('data', util.stderrorOnData);
   cmd.on('close', util.onClose);
@@ -18,8 +18,7 @@ function syncNative() {
 
 function buildNative() {
   process.chdir(util.args['ortDir']);
-  // build.bat --config Release --build_shared_lib --parallel 0 --use_dml --use_xnnpack --skip_test
-  const cmd = spawn('build.bat', ['--config', 'Release', '--build_shared_lib', '--parallel', util.cpuCount * 2, '--use_dml', '--use_xnnpack', '--skip_test']);
+  const cmd = exec(`build.bat --config Release --build_shared_lib --parallel ${util.cpuCount * 2} --use_dml --use_xnnpack --use_webgpu --skip_test --skip_submodule_sync --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON`);
   cmd.stdout.on('data', util.stdoutOnData);
   cmd.stderr.on('data', util.stderrorOnData);
   cmd.on('close', util.onClose);
@@ -46,7 +45,7 @@ function runNative() {
   cmdStr += ` ${path.join('d:/workspace/project/ort-models', util.args['model-name'] + '.onnx')}`;
   console.log(`[cmd] onnxruntime_perf_test.exe ${cmdStr}`);
 
-  const cmd = spawn('onnxruntime_perf_test.exe', cmdStr.split(' '));
+  const cmd = exec('onnxruntime_perf_test.exe', cmdStr.split(' '));
   cmd.stdout.on('data', util.stdoutOnData);
   cmd.stderr.on('data', util.stderrorOnData);
 }
