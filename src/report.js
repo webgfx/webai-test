@@ -1,9 +1,9 @@
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
-const { execSync } = require("child_process");
-const util = require("./util.js");
+import fs from 'fs';
+import path from 'path';
+import { execSync } from 'child_process';
+import util from './util.js';
 
 function getSortedHash(inputHash) {
   var resultHash = {};
@@ -290,4 +290,4 @@ async function report(results) {
   }
 }
 
-module.exports = report;
+export default { report };

@@ -1,24 +1,28 @@
 'use strict';
 
-const { spawnSync } = require('child_process');
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const si = require('systeminformation');
-const yargs = require('yargs');
+import ort from 'onnxruntime-node';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import si from 'systeminformation';
+import { spawnSync } from 'child_process';
 
-const { runApp } = require('./app.js');
-const runBenchmark = require('./benchmark.js');
-const config = require('./config.js');
-const { syncNative, buildNative, runNative } = require('./native.js');
-const report = require('./report.js');
-const parseTrace = require('./trace.js');
-const upload = require('./upload.js');
-const util = require('./util.js');
-const workload = require('./workload.js');
+import yargs from 'yargs';
+import util from './util.js';
+import browser from './browser.js';
 
-util.args =
-  yargs.usage('node $0 [args]')
+import app from './app.js';
+import benchmark from './benchmark.js';
+import native from './native.js';
+import report from './report.js';
+import trace from './trace.js';
+import upload from './upload.js';
+import workload from './workload.js';
+import config from './config.js';
+
+function parseArgs() {
+  util.args = yargs(process.argv.slice(2))
+    .usage('node $0 [args]')
     .strict()
     .option('app-json', {
       type: 'string',
@@ -73,11 +77,16 @@ util.args =
       type: 'boolean',
       describe: 'kill chrome before testing',
     })
+    .option('mode', {
+      type: 'string',
+      describe: 'mode to run, native or web',
+      default: 'native',
+    })
     .option('model-name', {
       type: 'string',
       describe: 'model name to run, split by comma',
     })
-    .option('model-url', {
+    .option('model-path', {
       type: 'string',
       describe: 'model url',
     })
@@ -90,7 +99,7 @@ util.args =
       describe: 'ort dir',
       default: 'd:/workspace/project/onnxruntime'
     })
-    .option('ort-url', {
+    .option('ort-path', {
       type: 'string',
       describe: 'ort url',
     })
@@ -107,10 +116,6 @@ util.args =
       describe: 'repeat times',
       default: 1,
     })
-    .option('run-times', {
-      type: 'number',
-      describe: 'run times',
-    })
     .option('server-info', {
       type: 'boolean',
       describe: 'get server info and display it in report',
@@ -118,6 +123,7 @@ util.args =
     .option('skip-config', {
       type: 'boolean',
       describe: 'skip config',
+      default: true,
     })
     .option('tasks', {
       type: 'string',
@@ -134,13 +140,13 @@ util.args =
       describe: 'timestamp format, day or second',
       default: 'second',
     })
-    .option('toolkit-url', {
+    .option('web-url', {
       type: 'string',
-      describe: 'toolkit url to test against',
+      describe: 'web url to test against',
     })
-    .option('toolkit-url-args', {
+    .option('web-url-args', {
       type: 'string',
-      describe: 'extra toolkit url args',
+      describe: 'extra web url args',
     })
     .option('trace-file', {
       type: 'string',
@@ -149,10 +155,6 @@ util.args =
     .option('upload', {
       type: 'boolean',
       describe: 'upload result to server',
-    })
-    .option('warmup-times', {
-      type: 'number',
-      describe: 'warmup times',
     })
     .option('workload-timeout', {
       type: 'number',
@@ -163,10 +165,110 @@ util.args =
       type: 'string',
       describe: 'workload url',
     })
+    .option('device-type', {
+      type: 'string',
+      describe: 'device type',
+      default: 'default',
+    })
+    .option('disable-buffer', {
+      type: 'boolean',
+      describe: 'disable buffer',
+      default: false,
+    })
+    .option('disable-readback', {
+      type: 'boolean',
+      describe: 'disable readback',
+      default: false,
+    })
+    .option('ep', {
+      type: 'string',
+      describe: 'ep, can be webgpu or cpu',
+      default: 'webgpu',
+    })
+    .option('enable-debug', {
+      type: 'boolean',
+      describe: 'enable debug',
+      default: false,
+    })
+    .option('enable-free-dimension-overrides', {
+      type: 'boolean',
+      describe: 'enable free dimension overrides',
+      default: true,
+    })
+    .option('enable-graph-capture', {
+      type: 'boolean',
+      describe: 'enable graph capture',
+      default: false,
+    })
+    .option('enable-io-binding', {
+      type: 'boolean',
+      describe: 'enable io binding',
+      default: false,
+    })
+    .option('enable-trace', {
+      type: 'boolean',
+      describe: 'enable trace',
+      default: false,
+    })
+    .option('external-data', {
+      type: 'string',
+      describe: 'external data',
+      default: '',
+    })
+    .option('log-level', {
+      type: 'string',
+      describe: 'verbose, info, warning, error, fatal',
+      default: 'warning',
+    })
+    .option('log-severity-level', {
+      type: 'number',
+      describe: 'Log severity level. Applies to session load, initialization, etc. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.',
+      default: 2,
+    })
+    .option('log-verbosity-level', {
+      type: 'number',
+      describe: 'VLOG level if DEBUG build and session_log_severity_level is 0. Applies to session load, initialization, etc. Default is 0.',
+      default: 0,
+    })
+    .option('opt-level', {
+      type: 'string',
+      describe: 'opt level, can be all, basic, disabled, extended',
+      default: 'all',
+    })
+    .option('model-name', {
+      type: 'string',
+      describe: 'model-name',
+      default: 'mobilenetv2-12',
+    })
+    .option('run-times', {
+      type: 'number',
+      describe: 'run times',
+      default: 1,
+    })
+    .option('task', {
+      type: 'string',
+      describe: 'task',
+      default: 'performance',
+    })
+    .option('warmup-times', {
+      type: 'number',
+      describe: 'warmup times',
+      default: 0,
+    })
+    .option('webgpu-layout', {
+      type: 'string',
+      describe: 'webgpu layout',
+      default: 'NHWC',
+    })
+    .option('wasm-threads', {
+      type: 'number',
+      describe: 'wasm threads',
+      default: 4,
+    })
     .example([
       ['node $0 --email a@intel.com;b@intel.com // Send report to emails'],
       [
-        'node $0 --tasks performance --toolkit-url http://127.0.0.1/workspace/project/onnxruntime'
+        'node $0 --tasks performance --web-url http://127.0.0.1/workspace/project/onnxruntime'
       ],
       [
         'node $0 --tasks performance --model-name pose-detection --architecture BlazePose-heavy --input-size 256 --input-type tensor --performance-ep webgpu',
@@ -188,10 +290,10 @@ util.args =
         'node $0 --tasks performance --performance-ep webgpu --model-name mobilenetv2-12 --timestamp-format day --skip-config // single test',
       ],
       [
-        'node $0 --tasks conformance --timestamp-format day --benchmark-json benchmark-wip.json --toolkit-url https://wp-27.sh.intel.com/workspace/project/webatintel/ort-toolkit'
+        'node $0 --tasks conformance --timestamp-format day --benchmark-json benchmark-wip.json --web-url https://xxx/project/webatintel/webai-test'
       ],
       [
-        'node $0 --tasks performance --performance-ep webgpu --model-name mobilenetv2-12 --enable-trace --ort-url gh/20231215-trace --timestamp-format day',
+        'node $0 --tasks performance --performance-ep webgpu --model-name mobilenetv2-12 --enable-trace --ort-path gh/20231215-trace --timestamp-format day',
       ],
       [
         'node $0 --tasks trace --timestamp 20231218 --trace-file workload-webgpu-trace',
@@ -201,163 +303,49 @@ util.args =
       ],
       [
         'node $0 --tasks app --browser-args="--proxy-server=<proxy>"',
-
       ],
     ])
     .help()
     .wrap(180)
     .argv;
+}
 
 async function main() {
-  if ('kill-chrome' in util.args) {
-    spawnSync('cmd', ['/c', 'taskkill /F /IM chrome.exe /T']);
-  }
+  parseArgs();
 
-  // set util members
-  let browserName;
-  let browserPath;
-  let userDataDir;
-  if (util.args['browser'] === 'chrome_canary') {
-    browserName = 'Chrome SxS';
-    if (util.platform === 'darwin') {
-      browserPath =
-        '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary';
-      userDataDir = `/Users/${os.userInfo()
-        .username}/Library/Application Support/Google/Chrome Canary`;
-    } else if (util.platform === 'linux') {
-      // There is no Canary channel for Linux, use dev channel instead
-      browserPath = '/usr/bin/google-chrome-unstable';
-      userDataDir =
-        `/home/${os.userInfo().username}/.config/google-chrome-unstable`;
-    } else if (util.platform === 'win32') {
-      browserPath = `${process.env.LOCALAPPDATA}/Google/Chrome SxS/Application/chrome.exe`;
-      userDataDir =
-        `${process.env.LOCALAPPDATA}/Google/${browserName}/User Data`;
-    }
-  } else if (util.args['browser'] === 'chrome_dev') {
-    browserName = 'Chrome Dev';
-    if (util.platform === 'darwin') {
-      browserPath =
-        '/Applications/Google Chrome Dev.app/Contents/MacOS/Google Chrome Dev';
-      userDataDir = `/Users/${os.userInfo()
-        .username}/Library/Application Support/Google/Chrome Dev`;
-    } else if (util.platform === 'linux') {
-      browserPath = '/usr/bin/google-chrome-unstable';
-      userDataDir =
-        `/home/${os.userInfo().username}/.config/google-chrome-unstable`;
-    } else if (util.platform === 'win32') {
-      browserPath = `${process.env.PROGRAMFILES}/Google/Chrome Dev/Application/chrome.exe`;
-      userDataDir =
-        `${process.env.LOCALAPPDATA}/Google/${browserName}/User Data`;
-    }
-  } else if (util.args['browser'] === 'chrome_beta') {
-    browserName = 'Chrome Beta';
-    if (util.platform === 'darwin') {
-      browserPath =
-        '/Applications/Google Chrome Beta.app/Contents/MacOS/Google Chrome Beta';
-      userDNameir = `/Users/${os.userInfo()
-        .username}/Library/Application Support/Google/Chrome Beta`;
-    } else if (util.platform === 'linux') {
-      browserPath = '/usr/bin/google-chrome-beta';
-      userDataDir =
-        `/home/${os.userInfo().username}/.config/google-chrome-beta`;
-    } else if (util.platform === 'win32') {
-      browserPath = `${process.env.PROGRAMFILES}/Google/Chrome Beta/Application/chrome.exe`;
-      userDataDir =
-        `${process.env.LOCALAPPDATA}/Google/${browserName}/User Data`;
-    }
-  } else if (util.args['browser'] === 'chrome_stable') {
-    browserName = 'Chrome';
-    if (util.platform === 'darwin') {
-      browserPath =
-        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
-      userDataDir = `/Users/${os.userInfo().username}/Library/Application Support/Google/Chrome`;
-    } else if (util.platform === 'linux') {
-      browserPath = '/usr/bin/google-chrome-stable';
-      userDataDir =
-        `/home/${os.userInfo().username}/.config/google-chrome-stable`;
-    } else if (util.platform === 'win32') {
-      browserPath =
-        `${process.env.PROGRAMFILES}/Google/Chrome/Application/chrome.exe`;
-      userDataDir =
-        `${process.env.LOCALAPPDATA}/Google/${browserName}/User Data`;
-    }
-  } else if (util.args['browser'] === 'edge_canary') {
-    browserName = 'Edge SXS';
-    if (util.platform === 'win32') {
-      browserPath =
-        `${process.env.LOCALAPPDATA}/Microsoft/Edge SXS/Application/msedge.exe`;
-      userDataDir =
-        `${process.env.LOCALAPPDATA}/Microsoft/${browserName}/User Data`;
-    }
-  } else if (util.args['browser'] === 'edge_stable') {
-    browserName = 'Edge';
-    if (util.platform === 'win32') {
-      browserPath =
-        `${process.env["PROGRAMFILES(X86)"]}/Microsoft/Edge/Application/msedge.exe`;
-      userDataDir =
-        `${process.env.LOCALAPPDATA}/Microsoft/${browserName}/User Data`;
-    }
-  }
-  else {
-    browserName = util.args['browser'];
-    browserPath = util.args['browser'];
-    userDataDir = `${util.outDir}/user-data-dir`;
-  }
+  util.mode = util.args['mode'];
 
-  util.browserName = browserName;
-  // TODO: handle space in edge_stable's path
-  util.browserPath = browserPath;
-  //console.log(util.browserPath);
-  util.userDataDir = userDataDir;
-  if ('cleanup-user-data-dir' in util.args) {
-    console.log('Cleanup user data dir');
-    util.ensureNoDir(userDataDir);
+  if (util.args['mode'] === 'web') {
+    browser.setup();
   }
-
-  if (util.platform === 'linux') {
-    util.browserArgs.push(
-      ...['--enable-unsafe-webgpu', '--use-angle=vulkan',
-        '--enable-features=Vulkan']);
-  }
-  if (util.platform === 'darwin') {
-    util.browserArgs.push('--use-mock-keychain');
-  }
-  if ('browser-args' in util.args) {
-    util.browserArgs.push(...util.args['browser-args'].split(' '));
-  }
-
-  if ('enable-trace' in util.args) {
-    util.toolkitUrlArgs.push('enableTrace=true');
-    util.browserArgs.push(
-      ...['--enable-unsafe-webgpu',
-        '--enable-dawn-features=allow_unsafe_apis,use_dxc,record_detailed_timing_in_trace_events,disable_timestamp_query_conversion',
-        '--trace-startup=devtools.timeline,disabled-by-default-gpu.dawn',
-        '--trace-startup-format=json',
-      ]);
-  }
-
-  if ('model-url' in util.args) {
-    util.modelUrl = util.args['model-url'];
+  if (util.args['mode'] === 'native') {
+    util.allEps = ['webgpu'];
   } else {
-    util.modelUrl = 'wp-27';
+    util.allEps = ['webgpu', 'wasm'];
   }
 
-  if ('ort-url' in util.args) {
-    util.ortUrl = util.args['ort-url'];
+  if ('model-path' in util.args) {
+    util.modelPath = util.args['model-path'];
+  } else if (util.args['mode'] === 'native') {
+    util.modelPath = 'd:/workspace/project/models';
   } else {
-    util.ortUrl = 'https://wp-27.sh.intel.com/workspace/project/onnxruntime';
+    util.modelPath = util.server;
   }
 
-  if ('toolkit-url' in util.args) {
-    util.toolkitUrl = util.args['toolkit-url'];
+  if ('ort-path' in util.args) {
+    util.ortPath = util.args['ort-path'];
   } else {
-    util.toolkitUrl =
-      'https://wp-27.sh.intel.com/workspace/project/ort-toolkit';
+    util.ortPath = `https://${util.server}/project/onnxruntime`;
   }
 
-  if ('toolkit-url-args' in util.args) {
-    util.toolkitUrlArgs.push(...util.args['toolkit-url-args'].split('&'));
+  if ('web-url' in util.args) {
+    util.webUrl = util.args['web-url'];
+  } else {
+    util.webUrl = `https://${util.server}/project/webai-test`;
+  }
+
+  if ('web-url-args' in util.args) {
+    util.webUrlArgs.push(...util.args['web-url-args'].split('&'));
   }
 
   let warmupTimes;
@@ -383,7 +371,7 @@ async function main() {
   }
 
   if (!util.args['skip-config']) {
-    await config();
+    await config.getConfig();
   }
 
   const cpuData = await si.cpu();
@@ -413,11 +401,13 @@ async function main() {
   util.duration = '';
   let startTime;
 
-  for (let task of tasks) {
-    if (['conformance', 'performance'].indexOf(task) >= 0) {
-      console.log(`Use browser at ${util.browserPath}`);
-      console.log(`Use user-data-dir at ${util.userDataDir}`);
-      break;
+  if (util.args['mode'] === 'web') {
+    for (let task of tasks) {
+      if (['conformance', 'performance'].indexOf(task) >= 0) {
+        console.log(`Use browser at ${util.browserPath}`);
+        console.log(`Use user-data-dir at ${util.userDataDir}`);
+        break;
+      }
     }
   }
 
@@ -440,34 +430,31 @@ async function main() {
       startTime = new Date();
       util.log(`=${task}=`);
       if (['conformance', 'performance'].indexOf(task) >= 0) {
-        if (!(task === 'performance' && util.warmupTimes === 0 &&
-          util.runTimes === 0)) {
-          results[task] = await runBenchmark(task);
-        }
+        results[task] = await benchmark.run(task);
         needReport = true;
       } else if (task === 'trace') {
-        await parseTrace();
+        await trace.parseTrace();
       } else if (task === 'workload') {
-        workload();
+        workload.workload();
       } else if (task === 'syncNative') {
-        syncNative();
+        native.syncNative();
       } else if (task === 'buildNative') {
-        buildNative();
+        native.buildNative();
       } else if (task === 'runNative') {
-        runNative();
+        native.runNative();
       } else if (task === 'app') {
-        results[task] = await runApp();
+        results[task] = await app.runApp();
         needReport = true;
       }
       util.duration += `${task}: ${(new Date() - startTime) / 1000} `;
     }
 
     if (needReport) {
-      await report(results);
+      await report.report(results);
     }
   }
   if ('upload' in util.args) {
-    await upload();
+    await upload.upload();
   }
 }
 

@@ -1,10 +1,10 @@
 "use strict";
 
-const { exec, execSync } = require("child_process");
-const { exit } = require("process");
-const puppeteer = require("puppeteer");
-const si = require("systeminformation");
-const util = require("./util.js");
+import { exec, execSync } from 'child_process';
+import { exit } from 'process';
+import puppeteer from 'puppeteer';
+import si from 'systeminformation';
+import util from './util.js';
 
 async function getConfig() {
   // CPU
@@ -170,4 +170,4 @@ async function getExtraConfig() {
   await browser.close();
 }
 
-module.exports = getConfig;
+export default { getConfig };

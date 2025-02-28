@@ -1,10 +1,9 @@
 "use strict";
 
-const puppeteer = require("puppeteer");
-const readline = require("readline");
-
-const parseTrace = require("./trace.js");
-const util = require("./util.js");
+import puppeteer from 'puppeteer';
+import readline from 'readline';
+import util from './util.js';
+import trace from './trace.js';
 
 async function startBrowser(traceFile) {
   let extraBrowserArgs = [];
@@ -58,4 +57,4 @@ async function workload() {
   await parseTrace(traceFile);
 }
 
-module.exports = workload;
+export default { workload };

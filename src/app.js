@@ -1,19 +1,18 @@
 'use strict';
 
-const fs = require('fs');
-const path = require('path');
-const puppeteer = require('puppeteer');
-const readline = require('readline');
+import fs from 'fs';
+import path from 'path';
+import puppeteer from 'puppeteer';
+import readline from 'readline';
+import util from './util.js';
 
-const util = require('./util.js');
-
-async function runApp() {
+async function run() {
   let apps = [];
 
   if ('app-name' in util.args) {
     apps = util.args['app-name'].split(',');
   } else {
-    let appJson = path.join(path.resolve(__dirname), util.args['app-json']);
+    let appJson = path.join(path.resolve(util.dirname), util.args['app-json']);
     apps = JSON.parse(fs.readFileSync(appJson));
   }
 
@@ -106,4 +105,4 @@ class App {
   }
 }
 
-module.exports = { runApp, App };
+export default { run };

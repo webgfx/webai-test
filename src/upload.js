@@ -1,10 +1,9 @@
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
-const { spawnSync } = require("child_process");
-
-const util = require("./util.js");
+import fs from 'fs';
+import path from 'path';
+import { spawnSync } from 'child_process';
+import util from './util.js';
 
 let startDate = "20230101";
 let endDate = "20230105";
@@ -57,4 +56,4 @@ async function upload() {
   }
 }
 
-module.exports = upload;
+export default { upload };

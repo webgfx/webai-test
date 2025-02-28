@@ -1,5 +1,5 @@
-const fs = require("fs");
-const util = require("./util");
+import fs from 'fs';
+import util from './util.js';
 
 let cpuBase, cpuFreq, gpuBase, gpuFreq, baseTime, timelineStack, timelineJson;
 let cpuInferenceIndex = -1;
@@ -158,4 +158,6 @@ function handleMessage(message, timeline) {
   }
 }
 
-module.exports = parseTrace;
+export default {
+  parseTrace,
+};
