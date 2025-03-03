@@ -1,10 +1,7 @@
 'use strict';
 
-import ort from 'onnxruntime-node';
 import fs from 'fs';
-import os from 'os';
 import path from 'path';
-import si from 'systeminformation';
 import { spawnSync } from 'child_process';
 
 import yargs from 'yargs';
@@ -52,9 +49,9 @@ function parseArgs() {
       type: 'boolean',
       describe: 'cleanup user data dir',
     })
-    .option('conformance-ep', {
+    .option('conformance-eps', {
       type: 'string',
-      describe: 'ep for conformance, split by comma',
+      describe: 'eps for conformance, split by comma',
     })
     .option('disable-breakdown', {
       type: 'boolean',
@@ -82,9 +79,9 @@ function parseArgs() {
       describe: 'mode to run, native or web',
       default: 'native',
     })
-    .option('model-name', {
+    .option('model-names', {
       type: 'string',
-      describe: 'model name to run, split by comma',
+      describe: 'model names to run, split by comma',
     })
     .option('model-path', {
       type: 'string',
@@ -101,15 +98,15 @@ function parseArgs() {
     })
     .option('ort-path', {
       type: 'string',
-      describe: 'ort url',
+      describe: 'ort path',
     })
     .option('pause-task', {
       type: 'boolean',
       describe: 'pause task',
     })
-    .option('performance-ep', {
+    .option('performance-eps', {
       type: 'string',
-      describe: 'ep for performance, split by comma',
+      describe: 'eps for performance, split by comma',
     })
     .option('repeat', {
       type: 'number',
@@ -123,7 +120,7 @@ function parseArgs() {
     .option('skip-config', {
       type: 'boolean',
       describe: 'skip config',
-      default: true,
+      default: false,
     })
     .option('tasks', {
       type: 'string',
@@ -218,12 +215,12 @@ function parseArgs() {
     .option('log-level', {
       type: 'string',
       describe: 'verbose, info, warning, error, fatal',
-      default: 'warning',
+      default: 'error',
     })
     .option('log-severity-level', {
       type: 'number',
       describe: 'Log severity level. Applies to session load, initialization, etc. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.',
-      default: 2,
+      default: 3,
     })
     .option('log-verbosity-level', {
       type: 'number',
@@ -235,9 +232,9 @@ function parseArgs() {
       describe: 'opt level, can be all, basic, disabled, extended',
       default: 'all',
     })
-    .option('model-name', {
+    .option('model-names', {
       type: 'string',
-      describe: 'model-name',
+      describe: 'model-names, split by comma',
       default: 'mobilenetv2-12',
     })
     .option('run-times', {
@@ -271,29 +268,29 @@ function parseArgs() {
         'node $0 --tasks performance --web-url http://127.0.0.1/workspace/project/onnxruntime'
       ],
       [
-        'node $0 --tasks performance --model-name pose-detection --architecture BlazePose-heavy --input-size 256 --input-type tensor --performance-ep webgpu',
+        'node $0 --tasks performance --model-name pose-detection --architecture BlazePose-heavy --input-size 256 --input-type tensor --performance-eps webgpu',
       ],
       [
         'node $0 --browser-args="--enable-dawn-features=disable_workgroup_init --no-sandbox --enable-zero-copy"'
       ],
       [
-        'node $0 --tasks performance --model-name mobilenetv2-12 --performance-ep webgpu --warmup-times 0 --run-times 1 --server-info --disable-new-browser',
+        'node $0 --tasks performance --model-name mobilenetv2-12 --performance-eps webgpu --warmup-times 0 --run-times 1 --server-info --disable-new-browser',
       ],
       [
-        'node $0 --tasks performance --model-name mobilenetv2-12 --performance-ep webgpu --warmup-times 0 --run-times 1 --timestamp-format day',
+        'node $0 --tasks performance --model-name mobilenetv2-12 --performance-eps webgpu --warmup-times 0 --run-times 1 --timestamp-format day',
       ],
       ['node $0 --enable-trace --timestamp 20220601'],
       [
         'node $0 --tasks conformance --conformance-ep webgpu --model-name mobilenetv2-12 --timestamp-format day --skip-config // single test',
       ],
       [
-        'node $0 --tasks performance --performance-ep webgpu --model-name mobilenetv2-12 --timestamp-format day --skip-config // single test',
+        'node $0 --tasks performance --performance-eps webgpu --model-name mobilenetv2-12 --timestamp-format day --skip-config // single test',
       ],
       [
         'node $0 --tasks conformance --timestamp-format day --benchmark-json benchmark-wip.json --web-url https://xxx/project/webatintel/webai-test'
       ],
       [
-        'node $0 --tasks performance --performance-ep webgpu --model-name mobilenetv2-12 --enable-trace --ort-path gh/20231215-trace --timestamp-format day',
+        'node $0 --tasks performance --performance-eps webgpu --model-name mobilenetv2-12 --enable-trace --ort-path gh/20231215-trace --timestamp-format day',
       ],
       [
         'node $0 --tasks trace --timestamp 20231218 --trace-file workload-webgpu-trace',
@@ -308,44 +305,38 @@ function parseArgs() {
     .help()
     .wrap(180)
     .argv;
-}
-
-async function main() {
-  parseArgs();
 
   util.mode = util.args['mode'];
 
   if (util.args['mode'] === 'web') {
     browser.setup();
-  }
-  if (util.args['mode'] === 'native') {
-    util.allEps = ['webgpu'];
-  } else {
+    if ('ort-path' in util.args) {
+      util.ortPath = util.args['ort-path'];
+    } else {
+      util.ortPath = `https://${util.server}/project/onnxruntime`;
+    }
+
+    if ('web-url' in util.args) {
+      util.webUrl = util.args['web-url'];
+    } else {
+      util.webUrl = `https://${util.server}/project/webai-test`;
+    }
+
+    if ('web-url-args' in util.args) {
+      util.webUrlArgs.push(...util.args['web-url-args'].split('&'));
+    }
+
     util.allEps = ['webgpu', 'wasm'];
+  } else {
+    util.allEps = ['webgpu'];
   }
 
   if ('model-path' in util.args) {
     util.modelPath = util.args['model-path'];
-  } else if (util.args['mode'] === 'native') {
-    util.modelPath = 'd:/workspace/project/models';
-  } else {
+  } else if (util.args['mode'] === 'web') {
     util.modelPath = util.server;
-  }
-
-  if ('ort-path' in util.args) {
-    util.ortPath = util.args['ort-path'];
   } else {
-    util.ortPath = `https://${util.server}/project/onnxruntime`;
-  }
-
-  if ('web-url' in util.args) {
-    util.webUrl = util.args['web-url'];
-  } else {
-    util.webUrl = `https://${util.server}/project/webai-test`;
-  }
-
-  if ('web-url-args' in util.args) {
-    util.webUrlArgs.push(...util.args['web-url-args'].split('&'));
+    util.modelPath = 'd:/workspace/project/models';
   }
 
   let warmupTimes;
@@ -363,7 +354,10 @@ async function main() {
     runTimes = 5;
   }
   util.runTimes = runTimes;
+}
 
+async function main() {
+  parseArgs();
   let tasks = util.args['tasks'].split(',');
 
   if (!fs.existsSync(util.outDir)) {
@@ -373,33 +367,6 @@ async function main() {
   if (!util.args['skip-config']) {
     await config.getConfig();
   }
-
-  const cpuData = await si.cpu();
-  util.cpuThreads = Number(cpuData.physicalCores) / 2;
-
-  util.upload = function (file, serverFolder) {
-    if (!('upload' in util.args)) {
-      return;
-    }
-    serverFolder = `${serverFolder}/${util.platform}/${util['gpuDeviceId']}`;
-    let result = spawnSync(util.ssh(`ls ${serverFolder}`), { shell: true });
-    if (result.status != 0) {
-      spawnSync(util.ssh(`mkdir -p ${serverFolder}`), { shell: true });
-    }
-
-    result = spawnSync(
-      util.scp(file, `${util.server}:${serverFolder}`), { shell: true });
-    if (result.status !== 0) {
-      util.log('[ERROR] Failed to upload file');
-    } else {
-      util.log(`[INFO] File was successfully uploaded to ${serverFolder}`);
-    }
-  };
-
-  // run tasks
-  let results = {};
-  util.duration = '';
-  let startTime;
 
   if (util.args['mode'] === 'web') {
     for (let task of tasks) {
@@ -411,8 +378,10 @@ async function main() {
     }
   }
 
+  let results = {};
+  util.duration = '';
+
   for (let i = 0; i < util.args['repeat']; i++) {
-    // ensure logFile
     util.timestamp = util.getTimestamp(util.args['timestamp-format']);
     util.timestampDir = path.join(util.outDir, util.timestamp);
     util.ensureDir(util.timestampDir);
@@ -427,10 +396,11 @@ async function main() {
 
     let needReport = false;
     for (let task of tasks) {
-      startTime = new Date();
-      util.log(`=${task}=`);
+      let startTime = new Date();
+      util.task = task;
+      util.log(`Start task ${task}`);
       if (['conformance', 'performance'].indexOf(task) >= 0) {
-        results[task] = await benchmark.run(task);
+        results[task] = await benchmark.run();
         needReport = true;
       } else if (task === 'trace') {
         await trace.parseTrace();
@@ -447,14 +417,12 @@ async function main() {
         needReport = true;
       }
       util.duration += `${task}: ${(new Date() - startTime) / 1000} `;
+      util.log(`End task ${task}`);
     }
 
     if (needReport) {
       await report.report(results);
     }
-  }
-  if ('upload' in util.args) {
-    await upload.upload();
   }
 }
 

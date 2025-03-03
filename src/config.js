@@ -9,6 +9,7 @@ import util from './util.js';
 async function getConfig() {
   // CPU
   const cpuData = await si.cpu();
+  util.cpuThreads = Number(cpuData.physicalCores) / 2;
   let cpuName = cpuData.brand;
   const cpuManufacturer = cpuData.manufacturer;
   if (cpuManufacturer.includes("Intel")) {
@@ -84,7 +85,7 @@ async function getConfig() {
   }
 
   // Chrome
-  if (util["platform"] === "win32" && util.args["browser"].match("chrome")) {
+  if (util.mode === "web" && util["platform"] === "win32" && util.args["browser"].match("chrome")) {
     const info = execSync(
       `reg query "HKEY_CURRENT_USER\\Software\\Google\\${util['browserName']}\\BLBeacon" /v version`
     ).toString();
@@ -93,7 +94,7 @@ async function getConfig() {
   }
 
   // Edge
-  if (util["platform"] === "win32" && util.args["browser"].match("edge")) {
+  if (util.mode === "web" && util["platform"] === "win32" && util.args["browser"].match("edge")) {
     const info = execSync(
       `reg query "HKEY_CURRENT_USER\\Software\\Microsoft\\${util['browserName']}\\BLBeacon" /v version`
     ).toString();

@@ -7,11 +7,13 @@ import models from './models.js';
 
 // For webgpuProfiling, layout conversion is done in first run, so we need to collect data of second run.
 async function run() {
-  let modelName = util.args['model-name'];
+  const modelName = util.modelName;
+  const task = util.task;
+  const ep = util.ep;
   let deviceType = util.args['device-type'];
   let disableReadback = util.args['disable-readback'];
   let disableBuffer = util.args['disable-buffer'];
-  const ep = util.args['ep'];
+
   let enableDebug = util.args['enable-debug'];
   let enableFreeDimensionOverrides = util.args['enable-free-dimension-overrides'];
   let enableGraphCapture = util.args['enable-graph-capture'];
@@ -22,7 +24,6 @@ async function run() {
   let logSeverityLevel = util.args['log-severity-level'];
   let logVerbosityLevel = util.args['log-verbosity-level'];
   let optLevel = util.args['opt-level'];
-  const task = util.args['task'];
   let webgpuLayout = util.args['webgpu-layout'];
 
   // globals
@@ -82,7 +83,6 @@ async function run() {
 
   let sessionStartTime = performance.now();
   let results = [];
-  let totalTime = 0;
   let webgpuInputBuffer = {};
 
   if (task === "conformance" && disableReadback) {
@@ -146,7 +146,6 @@ async function run() {
   if (task === "ortProfiling") {
     sessionOptions.enableProfiling = true;
   }
-
   // create session
   const sessionCreateStartTime = performance.now();
   util.session = await ort.InferenceSession.create(modelBuffer, sessionOptions);
@@ -155,11 +154,9 @@ async function run() {
     webgpuDevice = ort.env.webgpu.device;
   }
 
-  if (!util.feedsInfo) {
-    models.getFeedsInfo(modelName, util.session);
-  }
+  models.getFeedsInfo(modelName, util.session);
   const elapsedTimeSession = parseFloat((performance.now() - sessionCreateStartTime).toFixed(2));
-  console.info(`${elapsedTimeSession}ms was used to create session`);
+  console.info(`Session creation used ${elapsedTimeSession}ms`);
 
   const runOptions = {
     logSeverityLevel: logSeverityLevel,

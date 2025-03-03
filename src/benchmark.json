@@ -4,6 +4,7 @@
   "bert-base-cased",
   "bert-base-uncased",
   "clip-vit-base-patch16",
+  "clip-vit-base-patch32",
   "codegen-350m-mono-decoder",
   "codegen-350m-mono-decoder-merged",
   "densenet-9",

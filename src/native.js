@@ -31,7 +31,7 @@ function runNative() {
   // cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai
   const ep = util.args['native-ep'] || 'dml';
 
-  let modelName = util.args['model-name'];
+  let modelName = util.args['model-names'];
 
   let cmdStr = `onnxruntime_perf_test.exe -I -r ${util.runTimes}`;
   for (let key in freeDimensionOverrides[modelName]) {
@@ -42,7 +42,7 @@ function runNative() {
     cmdStr += ` -x ${util.cpuThreads}`;
   }
 
-  cmdStr += ` ${path.join('d:/workspace/project/models', util.args['model-name'] + '.onnx')}`;
+  cmdStr += ` ${path.join('d:/workspace/project/models', util.args['model-names'] + '.onnx')}`;
   console.log(`[cmd] onnxruntime_perf_test.exe ${cmdStr}`);
 
   const cmd = exec(cmdStr);

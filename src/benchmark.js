@@ -89,7 +89,8 @@ async function closeBrowser(browser) {
   }
 }
 
-function getErrorResult(task) {
+function getErrorResult() {
+  const task = util.task;
   if (task === 'conformance') {
     return '{"result": "[false]"}';
   } else if (task === 'performance') {
@@ -97,17 +98,23 @@ function getErrorResult(task) {
   }
 }
 
-async function run(task) {
-  // get benchmarks
+async function run() {
   let benchmarks = [];
-  let benchmarkJson = path.join(path.resolve(util.dirname), util.args['benchmark-json']);
-  let taskConfigs = JSON.parse(fs.readFileSync(benchmarkJson));
+  let modelNames = [];
+  const task = util.task;
 
-  for (let modelName of taskConfigs) {
+  if ('model-names' in util.args) {
+    modelNames = util.args['model-names'].split(',');
+  } else {
+    let benchmarkJson = path.join(path.resolve(util.dirname), util.args['benchmark-json']);
+    modelNames = JSON.parse(fs.readFileSync(benchmarkJson));
+  }
+
+  for (let modelName of modelNames) {
     let config = {};
-    if ('model-name' in util.args) {
+    if ('model-names' in util.args) {
       config['modelName'] =
-        util.intersect(modelName, util.args['model-name'].split(','));
+        util.intersect(modelName, util.args['model-names'].split(','));
     } else {
       config['modelName'] = modelName;
     }
@@ -116,27 +123,22 @@ async function run(task) {
     }
 
     if (task === 'conformance') {
-      if ('conformance-ep' in util.args) {
-        config['ep'] = util.args['conformance-ep'].split(',');
+      if ('conformance-eps' in util.args) {
+        config['eps'] = util.args['conformance-eps'].split(',');
       } else {
-        config['ep'] = structuredClone(util.allEps.filter(
+        config['eps'] = structuredClone(util.allEps.filter(
           (item) => ['wasm'].indexOf(item) < 0));
       }
-      for (let ep of config['ep']) {
+      for (let ep of config['eps']) {
         if (util.conformanceEps.indexOf(ep) < 0) {
           util.conformanceEps.push(ep);
         }
       }
     } else if (task === 'performance') {
-      if ('performance-ep' in util.args) {
-        config['ep'] = util.args['performance-ep'].split(',');
+      if ('performance-eps' in util.args) {
+        config['eps'] = util.args['performance-eps'].split(',');
       } else {
-        config['ep'] = structuredClone(util.allEps);
-      }
-      for (let ep of config['ep']) {
-        if (util.performanceEps.indexOf(ep) < 0) {
-          util.performanceEps.push(ep);
-        }
+        config['eps'] = structuredClone(util.allEps);
       }
     }
 
@@ -182,7 +184,6 @@ async function run(task) {
     let traceFile;
 
     util.log(`[${i + 1}/${benchmarksLength}] ${benchmark}`);
-    util.log(util.getTimestamp('second'));
 
     if (util.mode === 'web') {
       if (!('disable-new-browser' in util.args)) {
@@ -293,22 +294,21 @@ async function run(task) {
         util.hasError = false;
       }
     } else {
+      util.modelName = modelName;
+      util.ep = ep;
       if (task === "conformance") {
-        util.args['ep'] = ep;
         let epResults = await subtask.run();
-        util.args['ep'] = 'cpu';
+        util.ep = 'cpu';
         let cpuResults = await subtask.run();
         testResult = subtask.getResult(task, [epResults, cpuResults]);
       } else {
-        let results = await subtask.run();
-        testResult = subtask.getResult(task, results);
+        let tmpResults = await subtask.run();
+        testResult = subtask.getResult(task, tmpResults);
       }
-      util.reportStatus(`Finished task ${task}`);
     }
 
     // handle result
     let metricIndex = 0;
-    console.info(testResult);
     let testResults;
     if (util.mode === 'web') {
       testResults = JSON.parse(testResult);
@@ -342,13 +342,6 @@ async function run(task) {
       }
     } catch (error) {
     }
-  }
-
-  if (task === 'performance') {
-    let file =
-      path.join(util.timestampDir, `${util.timestamp.substring(0, 8)}.json`);
-    fs.writeFileSync(file, JSON.stringify(results));
-    util.upload(file, '/workspace/project/work/ort/perf');
   }
 
   return Promise.resolve(results);

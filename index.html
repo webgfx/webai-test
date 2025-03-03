@@ -1,0 +1,482 @@
+<meta http-equiv="Permissions-Policy" content="interest-cohort=(), user-id=()" />
+
+<body>
+  <h1 align="center">ONNX Runtime Toolkit</h1>
+  <h2 align="center" id="status">Test Status</h2>
+  <h3 align="center">Test Results</h3>
+
+  <link href="src/sortable.min.css" rel="stylesheet" />
+  <script src="src/sortable.min.js"></script>
+  <script src="src/util.js"></script>
+  <script src="src/models.js"></script>
+  <style>
+    .highlight {
+      background-color: yellow;
+    }
+  </style>
+  <script>
+    "use strict";
+
+    // url parameters
+    let deviceType = getParam("deviceType", "String", "default");
+
+    // disableXxx
+    const disableBuffer = getParam("disableBuffer", "Boolean", false);
+    let disableReadback = getParam("disableReadback", "Boolean", "default");
+
+    // enableXxx
+    const enableDebug = getParam("enableDebug", "Boolean", false);
+    const enableFreeDimensionOverrides = getParam("enableFreeDimensionOverrides", "Boolean", true);
+    let enableGraphCapture = getParam("enableGraphCapture", "Boolean", "default");
+    let enableIoBinding = getParam("enableIoBinding", "Boolean", false);
+    const enableModelUpdate = getParam("enableModelUpdate", "Boolean", false);
+    const enableTrace = getParam("enableTrace", "Boolean", false);
+
+    // ep can be webgpu, wasm, webnn
+    const ep = getParam("ep", "String", "webgpu");
+    const externalData = getParam("externalData", "String", "");
+    // 'verbose', 'info', 'warning', 'error', 'fatal'
+    const logLevel = getParam("logLevel", "String", "warning");
+    // Log severity level. Applies to session load, initialization, etc. 0:Verbose, 1:Info, 2:Warning. 3:Error, 4:Fatal. Default is 2.
+    const logSeverityLevel = getParam("logSeverityLevel", "Number", 2);
+    // VLOG level if DEBUG build and session_log_severity_level is 0. Applies to session load, initialization, etc. Default is 0.
+    const logVerbosityLevel = getParam("logVerbosityLevel", "Number", 0);
+    const modelName = getParam("modelName", "String", "default");
+    let modelUrl = getParam("modelUrl", "String", "webgfx-01");
+    // basic, all, disabled, extended
+    const optLevel = getParam("optLevel", "String", "all");
+    const ortUrl = getParam("ortUrl", "String", "default");
+    const ortVersion = getParam("ortVersion", "String", "dev");
+    let runTimes = getParam("runTimes", "Number", 0);
+    const task = getParam("task", "String", "performance");
+    let warmupTimes = getParam("warmupTimes", "Number", 0);
+    const wasmThreads = getParam("wasmThreads", "Number", 4);
+    const webgpuLayout = getParam("webgpuLayout", "String", "NHWC");
+    const webnnNumThreads = getParam("webnnNumThreads", "Number", 4);
+
+    // globals
+    let artifactData = [];
+    let artifactIndex = 0;
+    let feedsInfo = [];
+    let modelBuffer;
+    let originConsoleLog;
+    let ortProfilingData = [];
+    let ortProfilingIndex = 0;
+    let session;
+    const unitConversionFactor = 1000000;
+    let webgpuDevice;
+    let webgpuProfilingData = [];
+    let webgpuProfilingIndex = 0;
+
+    async function createSession(sessionOptions) {
+      if (disableBuffer) {
+        session = await ort.InferenceSession.create(modelUrl, sessionOptions);
+      } else {
+        session = await ort.InferenceSession.create(modelBuffer, sessionOptions);
+      }
+      if (ep === "webgpu") {
+        webgpuDevice = ort.env.webgpu.device;
+      }
+
+      if (feedsInfo.length === 0) {
+        getFeedsInfo(modelName);
+      }
+    }
+
+    async function main() {
+      // load scripts
+      let urls = [];
+      let ortFiles;
+
+      if (enableDebug) {
+        ortFiles = ["ort.all.js"];
+      } else {
+        ortFiles = ["ort.all.min.js"];
+      }
+
+      for (let ortFile of ortFiles) {
+        if (ortUrl === "default") {
+          urls.push(`https://cdn.jsdelivr.net/npm/onnxruntime-web@${ortVersion}/dist/${ortFile}`);
+        } else {
+          if (ortUrl.startsWith("gh/")) {
+            urls.push(`https://webatintel.github.io/ort-web/${ortUrl.replace("gh/", "")}/${ortFile}`);
+          } else {
+            urls.push(`${ortUrl}/js/web/dist/${ortFile}`);
+          }
+        }
+      }
+
+      for (let url of urls) {
+        await loadScript(url);
+      }
+
+      // specific settings, after ort is ready
+      if (deviceType === "default") {
+        if (ep === "wasm") {
+          deviceType = "cpu";
+        } else {
+          deviceType = "gpu";
+        }
+      }
+
+      if (disableReadback === "default") {
+        if (ep === "webgpu" && task !== "conformance") {
+          disableReadback = true;
+        } else {
+          disableReadback = false;
+        }
+      }
+
+      if (enableDebug) {
+        ort.env.debug = true;
+      }
+
+      if (enableGraphCapture === "default") {
+        if (ep === "webgpu" && getGraphCaptureInfo(modelName)) {
+          enableGraphCapture = true;
+        } else {
+          enableGraphCapture = false;
+        }
+      }
+      if (enableGraphCapture) {
+        enableIoBinding = true;
+      }
+
+      if (enableTrace) {
+        ort.env.trace = true;
+      }
+
+      let modelFolder = getModelFolderInfo(modelName);
+
+      if (modelUrl === "hf") {
+        modelUrl = `https://huggingface.co/webai-community/models/resolve/main/${modelFolder}${modelName}.onnx`;
+      } else if (modelUrl === "server") {
+        modelUrl = `${window.location.origin}${window.location.pathname}models/${modelFolder}${modelName}.onnx`;
+      } else if (modelUrl === "webgfx-01") {
+        modelUrl = `https://10.32.87.101/project/models/${modelFolder}${modelName}.onnx`;
+      }
+
+      ort.env.wasm.numThreads = wasmThreads; // By default, it's "min(4, ceil(cpu_core_num / 2))"
+      //ort.env.wasm.simd = true; // It's true by default
+
+      if (logLevel) {
+        ort.env.logLevel = logLevel;
+      }
+
+      if (task === "artifact") {
+        ort.env.debug = true;
+        ort.env.logLevel = "info";
+        warmupTimes = 0;
+        runTimes = 1;
+      }
+      if (task === "conformance" && ep === "webgpu" && enableIoBinding && runTimes === 0) {
+        runTimes = 2;
+      } else if (runTimes === 0) {
+        runTimes = 1;
+      }
+
+      // run task
+      if (task === "conformance") {
+        // ep has to run before wasm so that webgpuDevice can be correctly initialized
+        let epResults = await runTask(ep);
+        let cpuResults = await runTask("wasm");
+        renderTask([epResults, cpuResults]);
+      } else if (task === "artifact") {
+        await runTask(ep);
+        renderTask(task);
+      } else {
+        let results = await runTask(ep);
+        renderTask(results);
+      }
+      reportStatus(`Finished task ${task}`);
+    }
+
+    function processConsoleLog(args) {
+      let results;
+      const content = args[0];
+      if (content.startsWith('{"cat"')) {
+        results = JSON.parse(content.replace(/,$/, ""));
+        let argsResult = results["args"];
+        if ("provider" in argsResult) {
+          let shape = /(\"input_type_shape.*),\"thread_scheduling_stats\"/.exec(content);
+          ortProfilingData.push([
+            ortProfilingIndex++,
+            argsResult["op_name"],
+            parseInt(results["dur"]) / unitConversionFactor,
+            shape[1],
+            argsResult["provider"].replace("ExecutionProvider", ""),
+          ]);
+        }
+      } else if (content.startsWith("[profiling]")) {
+        results = /\[profiling\] kernel \"(.*)\" (input.*), execution time\: (\d+) ns/.exec(content);
+        let kernelName = "";
+        const kernelInfo = results[1].split("|");
+        const opType = kernelInfo[1];
+        const programName = kernelInfo[kernelInfo.length - 1];
+        if (opType == programName) {
+          kernelName = opType;
+        } else {
+          kernelName = `${opType}|${programName}`;
+        }
+
+        if (results) {
+          webgpuProfilingData.push([
+            webgpuProfilingIndex++,
+            kernelName,
+            parseInt(results[3]) / unitConversionFactor,
+            results[2],
+          ]);
+        }
+      } else if (content.includes("[artifact]")) {
+        results = /\[artifact\] key: (.*), programName\: (.*)/.exec(content);
+        if (results) {
+          artifactData.push([artifactIndex++, results[1], results[2]]);
+        }
+      }
+    }
+
+    function renderTask(data) {
+      let taskElement = document.createElement("p");
+      taskElement.align = "center";
+      document.body.appendChild(taskElement);
+      //taskElement.innerText = `[${task} results]`;
+
+      let resultElement = document.createElement("p");
+      resultElement.align = "center";
+      document.body.appendChild(resultElement);
+      resultElement.id = "result";
+      let result = {};
+
+      if (task === "conformance") {
+        let _results = [];
+        for (let i = 0; i < data[0].length; i++) {
+          _results.push([]);
+          for (let j = 0; j < data[0][i].length; j++) {
+            _results[i].push(compare(data[0][i][j], data[1][i][j], getEpsilons(modelName)));
+          }
+          _results[i] = `[${_results[i].join(", ")}]`;
+        }
+        result["result"] = _results.join(", ");
+
+        for (let i = 0; i < data.length; i++) {
+          console.info(data[i]);
+        }
+      } else if (task === "performance") {
+        let details = data.join(", ");
+        let detailsElement = document.createElement("p");
+        document.body.appendChild(detailsElement);
+        detailsElement.innerText = details;
+
+        result["first"] = data[0];
+        data.shift();
+        let totalTime = getSum(data);
+        let averageTime = parseFloat((totalTime / data.length).toFixed(2));
+        result["average"] = averageTime;
+        result["best"] = Math.min(...data);
+      }
+
+      if (task === "conformance" || task === "performance") {
+        resultElement.innerText = JSON.stringify(result);
+        return;
+      }
+
+      // profiling
+      if (task.includes("Profiling")) {
+        resultElement.innerText = `${data[data.length - 1]}ms`;
+        if (task === "ortProfiling") {
+          renderAggregatedData(["Kernel", "Time (ms)", "Percentage (%)"], ortProfilingData, 'ORT Aggregated Profiling Data');
+          renderData(["Index", "Kernel", "Time (ms)", "Shape", "Provider"], ortProfilingData, 'ORT Profiling Data');
+        }
+        if (task === "webgpuProfiling") {
+          renderAggregatedData(["Kernel", "Time (ms)", "Percentage (%)"], webgpuProfilingData, 'WebGPU Aggregated Profiling Data');
+          renderData(["Index", "Kernel", "Time (ms)", "Shape"], webgpuProfilingData, 'WebGPU Profiling Data');
+        }
+      }
+
+      if (task === "artifact") {
+        renderData(["Index", "Key", "programName"], artifactData, 'Artifact Data');
+      }
+    }
+
+    // For webgpuProfiling, layout conversion is done in first run, so we need to collect data of second run.
+    async function runTask(taskEp) {
+      let sessionStartTime = performance.now();
+      let results = [];
+      let totalTime = 0;
+      let webgpuInputBuffer = {};
+
+      if (task === "conformance" && disableReadback) {
+        throw Error("Can not set disableReadback for conformance");
+      }
+
+      // override console.log
+      if (task.includes("Profiling") || task === "artifact") {
+        originConsoleLog = console.log;
+        console.log = function () {
+          processConsoleLog(arguments);
+          originConsoleLog.apply(this, arguments);
+        };
+      }
+
+      const getModelStartTime = performance.now();
+      const elapsedTimeModel = parseFloat((performance.now() - getModelStartTime).toFixed(2));
+      console.info(`${elapsedTimeModel}ms was used to get model`);
+
+      // set sessionOptions
+      const sessionOptions = {
+        executionProviders: [
+          {
+            name: taskEp,
+            deviceType: deviceType,
+          },
+        ],
+        graphOptimizationLevel: optLevel,
+        logSeverityLevel: logSeverityLevel,
+        logVerbosityLevel: logVerbosityLevel,
+      };
+
+      if (enableModelUpdate) {
+        modelBuffer = await getOPFS(`${modelName}.onnx`, modelUrl, true);
+      } else {
+        modelBuffer = await getOPFS(`${modelName}.onnx`, modelUrl, false);
+        if (modelBuffer.byteLength < 300) {
+          modelBuffer = await getOPFS(`${modelName}.onnx`, modelUrl, true);
+        }
+      }
+
+      if (externalData !== "") {
+        let data, path;
+
+        if (disableBuffer) {
+          data = externalData;
+        } else {
+          data = await getOPFS(`${modelName}.data`, externalData, false);
+        }
+
+        path = externalData.split('/').pop();
+
+        sessionOptions.externalData = [
+          {
+            data: data,
+            path: path,
+          }
+        ];
+      }
+
+      if (taskEp === "webgpu" && enableGraphCapture) {
+        sessionOptions.enableGraphCapture = true;
+      }
+
+      if (taskEp === "webgpu" && (disableReadback || enableIoBinding)) {
+        sessionOptions.preferredOutputLocation = "gpu-buffer";
+      }
+
+      if (taskEp === "webgpu") {
+        sessionOptions.executionProviders[0].preferredLayout = webgpuLayout;
+      }
+
+      if (taskEp === "webnn" && deviceType === "cpu") {
+        sessionOptions.executionProviders[0].numThreads = webnnNumThreads;
+      }
+
+      if (taskEp === "webnn" || enableFreeDimensionOverrides) {
+        sessionOptions.freeDimensionOverrides = getFreeDimensionOverrides(modelName);
+      }
+
+      if (task === "ortProfiling") {
+        sessionOptions.enableProfiling = true;
+      }
+
+      // create session
+      const sessionCreateStartTime = performance.now();
+      await createSession(sessionOptions);
+      const elapsedTimeSession = parseFloat((performance.now() - sessionCreateStartTime).toFixed(2));
+      console.info(`${elapsedTimeSession}ms was used to create session`);
+
+      const runOptions = {
+        logSeverityLevel: logSeverityLevel,
+        logVerbosityLevel: logVerbosityLevel,
+      };
+
+      // run a task
+      for (let i = 0; i < warmupTimes + runTimes; i++) {
+        let result;
+        let feeds = {};
+
+        if (!sessionStartTime) {
+          sessionStartTime = performance.now();
+        }
+        reportStatus(`Running task ${task} ${i} ...`);
+
+        if ((i === warmupTimes + 1 || runTimes == 1) && task === "webgpuProfiling") {
+          ort.env.webgpu.profiling = { mode: "default" };
+        }
+
+        for (const [feed, [type, data, dims, bufferSize]] of feedsInfo[i]) {
+          if (taskEp === "webgpu" && enableIoBinding) {
+            if (!(bufferSize in webgpuInputBuffer)) {
+              webgpuInputBuffer[bufferSize] = webgpuDevice.createBuffer({
+                size: bufferSize,
+                usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST | GPUBufferUsage.STORAGE,
+              });
+            }
+
+            webgpuDevice.queue.writeBuffer(webgpuInputBuffer[bufferSize], 0, data);
+            feeds[feed] = ort.Tensor.fromGpuBuffer(webgpuInputBuffer[bufferSize], { dataType: type, dims });
+          } else {
+            feeds[feed] = new ort.Tensor(type, data, dims);
+          }
+        }
+
+        result = await session.run(feeds, runOptions);
+
+        if (taskEp === "webgpu" && (disableReadback || enableIoBinding)) {
+          await webgpuDevice.queue.onSubmittedWorkDone();
+        }
+
+        if (task === "conformance") {
+          results.push([]);
+          let index = results.length - 1;
+          let _result;
+          for (let i = 0; i < session.outputNames.length; i++) {
+            if (taskEp === "webgpu" && enableIoBinding) {
+              _result = await result[session.outputNames[i]].getData(true);
+            } else {
+              _result = result[session.outputNames[i]]["data"];
+            }
+            if (_result instanceof Uint16Array && modelName.endsWith("-f16")) {
+              const _f16Result = [];
+              for (let j = 0; j < _result.length; j++) {
+                _f16Result.push(float16ToNumber(_result[j]));
+              }
+              results[index].push(_f16Result);
+            } else {
+              results[index].push(_result);
+            }
+          }
+        } else if (i === 0 || i >= warmupTimes) {
+          const elapsedTime = parseFloat((performance.now() - sessionStartTime).toFixed(2));
+          results.push(elapsedTime);
+        }
+        sessionStartTime = null;
+
+        if ((i === warmupTimes + 1 || runTimes == 1) && task === "webgpuProfiling") {
+          ort.env.webgpu.profiling = { mode: "" };
+          break;
+        }
+      }
+
+      // release session
+      session.release();
+
+      // restore console.log
+      if (task.includes("Profiling")) {
+        console.log = originConsoleLog;
+      }
+
+      return results;
+    }
+
+    main();
+  </script>
+</body>

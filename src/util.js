@@ -11,7 +11,7 @@ let browserArgs = ['--enable-features=SharedArrayBuffer', '--start-maximized', '
 browserArgs.push(
   ...['--enable-webgpu-developer-features']);
 
-let parameters = ['modelName', 'ep'];
+let parameters = ['modelName', 'eps'];
 
 let platform = os.platform();
 
@@ -115,6 +115,7 @@ function intersect(a, b) {
 
 function log(info) {
   fs.appendFileSync(this.logFile, String(info) + '\n');
+  console.info(`[Info] ${info}`);
 }
 
 function padZero(str) {
@@ -124,6 +125,22 @@ function padZero(str) {
 function scp(src, dest) {
   return `scp ${remoteCmdArgs} ${src} ${dest}`;
 }
+
+function upload(file, serverFolder) {
+  serverFolder = `${serverFolder}/${util.platform}/${util['gpuDeviceId']}`;
+  let result = spawnSync(util.ssh(`ls ${serverFolder}`), { shell: true });
+  if (result.status != 0) {
+    spawnSync(util.ssh(`mkdir -p ${serverFolder}`), { shell: true });
+  }
+
+  result = spawnSync(
+    util.scp(file, `${util.server}:${serverFolder}`), { shell: true });
+  if (result.status !== 0) {
+    util.log('[ERROR] Failed to upload file');
+  } else {
+    util.log(`[INFO] File was successfully uploaded to ${serverFolder}`);
+  }
+};
 
 async function sendMail(to, subject, html) {
   let from = "webgraphics@intel.com";
@@ -473,7 +490,7 @@ export default {
   hostname: os.hostname(),
   outDir: outDir,
   parameters: parameters,
-  performanceEps: [],
+  performanceEps: ['webgpu'],
   platform: platform,
   server: 'webgfx-02.guest.corp.microsoft.com',
   taskMetrics: taskMetrics,

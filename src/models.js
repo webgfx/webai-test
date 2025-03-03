@@ -17,6 +17,16 @@ const models = {
     'clip',
     { text_batch_size: 1, sequence_length: 77, image_batch_size: 1, num_channels: 3, height: 224, width: 224 },
   ],
+  // https://huggingface.co/Xenova/vit-base-patch16-224/blob/main/onnx/model.onnx
+  'clip-vit-base-patch16-224': [
+    { 'pixel_values': ['float32', 1, [1, 3, 224, 224]] },
+    { 'batch_size': 1, 'num_channels': 3, 'height': 224, 'width': 224 }
+  ],
+  // https://huggingface.co/openai/clip-vit-base-patch32
+  'clip-vit-base-patch32': [
+    { 'input': ['float32', 1, [1, 3, 224, 224]] }
+  ],
+
   // https://huggingface.co/Xenova/codegen-350M-mono/tree/main/onnx
   'codegen-350m-mono-decoder': ['codegen-350m-mono-decoder', { 'batch_size': 1, 'sequence_length': 8 }],
   'codegen-350m-mono-decoder-merged': 'codegen-350m-mono-decoder',
@@ -192,12 +202,6 @@ const models = {
 
   // webnn
   'tinyyolov2-8': [{ image: ['float32', 'random', [1, 3, 416, 416]] }, { None: 1 }],
-
-  // https://huggingface.co/Xenova/vit-base-patch16-224/blob/main/onnx/model.onnx
-  'vit-base-patch16-224': [
-    { 'pixel_values': ['float32', 1, [1, 3, 224, 224]] },
-    { 'batch_size': 1, 'num_channels': 3, 'height': 224, 'width': 224 }
-  ],
 
   // https://huggingface.co/Xenova/vit-gpt2-image-captioning/blob/main/onnx/decoder_model.onnx
   'vit-gpt2-image-captioning-decoder': [
